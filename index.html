@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Glucose Log</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Glucose">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0f766e">
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#14202b;--mute:#6b7785;--line:#e3e8ee;--brand:#0f766e;--ok:#1a9a5b;--low:#d9822b;--high:#d64545}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1419;--card:#18212a;--ink:#eef3f7;--mute:#93a1ae;--line:#26323d;--brand:#2bb3a6}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font:17px/1.4 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:env(safe-area-inset-top) 0 calc(env(safe-area-inset-bottom) + 24px)}
+main{max-width:520px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+h1{font-size:26px;margin:0}
+.card{background:var(--card);border-radius:20px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.slot{border:2px solid var(--line);background:transparent;color:var(--ink);border-radius:16px;padding:12px 4px;font-size:14px;font-weight:600;text-align:center;line-height:1.2}
+.slot span{display:block;font-size:26px;margin-bottom:4px}
+.slot.on{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand)}
+.slot.done::after{content:"✓";display:block;color:var(--ok);font-size:15px;margin-top:2px}
+.val{display:flex;align-items:baseline;justify-content:center;gap:8px;margin:6px 0 14px}
+input#v{font-size:64px;font-weight:700;width:190px;text-align:center;border:none;border-bottom:3px solid var(--line);background:transparent;color:var(--ink);border-radius:0;outline:none;padding:0}
+input#v:focus{border-color:var(--brand)}
+.unit{font-size:20px;color:var(--mute)}
+.row{display:flex;gap:8px;margin-bottom:12px}
+input,textarea,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;width:100%}
+button.primary{width:100%;background:var(--brand);color:#fff;border:none;border-radius:16px;padding:16px;font-size:20px;font-weight:700}
+button.primary:active{opacity:.85}
+button.ghost{background:none;border:none;color:var(--brand);font-size:16px;font-weight:600;padding:6px}
+.day{font-weight:700;margin:14px 0 6px;color:var(--mute);font-size:14px;text-transform:uppercase;letter-spacing:.04em}
+.entry{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.entry:first-of-type{border-top:none}
+.dot{width:12px;height:12px;border-radius:50%;flex:none}
+.entry .n{font-size:22px;font-weight:700;min-width:64px}
+.entry .m{color:var(--mute);font-size:14px;flex:1}
+.entry .m b{color:var(--ink);font-weight:600}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 24px);transform:translateX(-50%);background:#14202b;color:#fff;padding:12px 20px;border-radius:999px;opacity:0;pointer-events:none;transition:.25s}
+.toast.show{opacity:1}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.stats b{display:block;font-size:22px}.stats small{color:var(--mute)}
+label{display:block;font-size:14px;color:var(--mute);margin:10px 0 4px}
+svg{width:100%;height:auto;display:block}
+.hint{font-size:13px;color:var(--mute)}
+dialog{border:none;border-radius:20px;padding:20px;width:min(92vw,420px);background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;padding:10px;border-radius:12px;border:none;background:var(--line);color:var(--ink);font-weight:600;font-size:16px}
+.tabs button.on{background:var(--brand);color:#fff}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+<header><h1 id="title">Glucose</h1><button class="ghost" id="settingsBtn" aria-label="Settings">⚙️</button></header>
+
+<div class="tabs"><button id="tabAdd" class="on"></button><button id="tabHist"></button></div>
+
+<section id="viewAdd">
+  <div class="card">
+    <div class="slots" id="slots"></div>
+    <div class="val"><input id="v" type="number" inputmode="decimal" placeholder="—" step="any" autocomplete="off"><span class="unit" id="unitLbl"></span></div>
+    <div class="row"><input id="when" type="datetime-local"></div>
+    <div class="row"><input id="note" type="text" maxlength="120"></div>
+    <button class="primary" id="saveBtn"></button>
+  </div>
+  <div class="card" id="todayCard"></div>
+</section>
+
+<section id="viewHist" class="hidden">
+  <div class="card"><div class="stats" id="stats"></div></div>
+  <div class="card"><svg id="chart" viewBox="0 0 340 190"></svg><div class="hint" id="legend"></div></div>
+  <div class="card" id="list"></div>
+  <div class="card"><button class="ghost" id="shareBtn"></button> <button class="ghost" id="csvBtn"></button></div>
+</section>
+</main>
+
+<dialog id="settings">
+  <h2 style="margin-top:0" id="setTitle"></h2>
+  <label id="lLang"></label>
+  <select id="sLang"><option value="en">English</option><option value="de">Deutsch</option></select>
+  <label id="lUnit"></label>
+  <select id="sUnit"><option value="mgdl">mg/dL</option><option value="mmol">mmol/L</option></select>
+  <label id="lRange"></label>
+  <div class="row"><input id="sLo" type="number" inputmode="decimal"><input id="sHi" type="number" inputmode="decimal"></div>
+  <div class="hint" id="rangeHint"></div>
+  <button class="primary" style="margin-top:16px" id="closeSet"></button>
+</dialog>
+<dialog id="editor">
+  <h2 style="margin-top:0" id="edTitle"></h2>
+  <input id="eV" type="number" inputmode="decimal" step="any"><label></label>
+  <select id="eSlot"></select><label></label>
+  <input id="eWhen" type="datetime-local"><label></label>
+  <input id="eNote" type="text">
+  <div class="row" style="margin-top:16px"><button class="primary" id="eSave" style="flex:2"></button><button class="primary" id="eDel" style="flex:1;background:var(--high)"></button></div>
+  <button class="ghost" id="eCancel" style="width:100%;margin-top:6px"></button>
+</dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+const T={
+ en:{title:"Glucose",add:"Add",hist:"History",s0:"Waking up",s1:"Before lunch",s2:"Before dinner",save:"Save",note:"Note (optional)",
+  today:"Today",none:"Nothing logged yet",saved:"Saved ✓",enter:"Enter a value",odd:"That value looks unusual – please check it",
+  avg:"Average",min:"Lowest",max:"Highest",days14:"Last 14 days",settings:"Settings",lang:"Language",unit:"Unit",range:"Target range (low / high)",
+  done:"Done",share:"Share / Send",csv:"Download CSV",del:"Delete",cancel:"Cancel",edit:"Edit entry",confirmDel:"Delete this entry?",
+  value:"Value",slot:"Time of day",when:"Date & time",rangeHint:"Colours are only a visual guide. Ask your doctor for your own target values.",
+  report:"Glucose log",low:"low",high:"high",inr:"in range",entries:"entries"},
+ de:{title:"Blutzucker",add:"Eintragen",hist:"Verlauf",s0:"Aufstehen",s1:"Vor Mittag",s2:"Vor Abend",save:"Speichern",note:"Notiz (optional)",
+  today:"Heute",none:"Noch nichts eingetragen",saved:"Gespeichert ✓",enter:"Wert eingeben",odd:"Der Wert wirkt ungewöhnlich – bitte prüfen",
+  avg:"Durchschnitt",min:"Niedrigster",max:"Höchster",days14:"Letzte 14 Tage",settings:"Einstellungen",lang:"Sprache",unit:"Einheit",range:"Zielbereich (unten / oben)",
+  done:"Fertig",share:"Teilen / Senden",csv:"CSV herunterladen",del:"Löschen",cancel:"Abbrechen",edit:"Eintrag bearbeiten",confirmDel:"Diesen Eintrag löschen?",
+  value:"Wert",slot:"Tageszeit",when:"Datum & Uhrzeit",rangeHint:"Die Farben sind nur eine Orientierung. Die persönlichen Zielwerte gibt der Arzt vor.",
+  report:"Blutzucker-Protokoll",low:"niedrig",high:"hoch",inr:"im Zielbereich",entries:"Einträge"}
+};
+const ICON=["🌅","☀️","🌙"];
+const $=id=>document.getElementById(id);
+const load=(k,d)=>{try{const x=JSON.parse(localStorage.getItem(k));return x??d}catch(e){return d}};
+const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let data=load("glu.data",[]);
+let cfg=Object.assign({lang:(navigator.language||"en").startsWith("de")?"de":"en",unit:"mgdl",lo:70,hi:130},load("glu.cfg",{}));
+let slot=0,curTab="add";
+const t=k=>T[cfg.lang][k];
+const toDisp=mg=>cfg.unit==="mmol"?Math.round(mg/18.016*10)/10:Math.round(mg);
+const fromDisp=x=>cfg.unit==="mmol"?x*18.016:x;
+const unitName=()=>cfg.unit==="mmol"?"mmol/L":"mg/dL";
+const pad=n=>String(n).padStart(2,"0");
+const localInput=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const dayKey=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const loc=()=>cfg.lang==="de"?"de-DE":"en-GB";
+const color=mg=>mg<cfg.lo?"var(--low)":mg>cfg.hi?"var(--high)":"var(--ok)";
+function guessSlot(d=new Date()){const h=d.getHours();return h<10?0:h<15?1:2}
+
+function toast(m){const e=$("toast");e.textContent=m;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),1800)}
+
+function renderStatic(){
+ document.documentElement.lang=cfg.lang;
+ $("title").textContent=t("title");$("tabAdd").textContent=t("add");$("tabHist").textContent=t("hist");
+ $("saveBtn").textContent=t("save");$("note").placeholder=t("note");$("unitLbl").textContent=unitName();
+ $("setTitle").textContent=t("settings");$("lLang").textContent=t("lang");$("lUnit").textContent=t("unit");$("lRange").textContent=t("range")+" – "+unitName();
+ $("rangeHint").textContent=t("rangeHint");$("closeSet").textContent=t("done");
+ $("shareBtn").textContent="📤 "+t("share");$("csvBtn").textContent="⬇️ "+t("csv");
+ $("sLang").value=cfg.lang;$("sUnit").value=cfg.unit;$("sLo").value=toDisp(cfg.lo);$("sHi").value=toDisp(cfg.hi);
+ $("edTitle").textContent=t("edit");$("eSave").textContent=t("save");$("eDel").textContent=t("del");$("eCancel").textContent=t("cancel");
+ const ls=$("editor").querySelectorAll("label");ls[0].textContent=t("slot");ls[1].textContent=t("when");ls[2].textContent=t("note");
+ $("eV").placeholder=t("value");
+ $("eSlot").innerHTML=[0,1,2].map(i=>`<option value="${i}">${ICON[i]} ${t("s"+i)}</option>`).join("");
+}
+
+function renderSlots(){
+ const today=dayKey(new Date());
+ const doneSet=new Set(data.filter(e=>dayKey(new Date(e.ts))===today).map(e=>e.slot));
+ $("slots").innerHTML=[0,1,2].map(i=>`<button class="slot ${slot===i?"on":""} ${doneSet.has(i)?"done":""}" data-i="${i}"><span>${ICON[i]}</span>${t("s"+i)}</button>`).join("");
+ $("slots").querySelectorAll("button").forEach(b=>b.onclick=()=>{slot=+b.dataset.i;renderSlots();$("v").focus()});
+}
+
+function entryHTML(e){
+ const d=new Date(e.ts);
+ return `<div class="entry" data-id="${e.id}"><span class="dot" style="background:${color(e.mg)}"></span><span class="n">${toDisp(e.mg)}</span>
+ <span class="m"><b>${ICON[e.slot]} ${t("s"+e.slot)}</b> · ${d.toLocaleTimeString(loc(),{hour:"2-digit",minute:"2-digit"})}${e.note?`<br>${esc(e.note)}`:""}</span><span class="ghost" style="color:var(--mute)">›</span></div>`;
+}
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function renderToday(){
+ const k=dayKey(new Date());
+ const arr=data.filter(e=>dayKey(new Date(e.ts))===k).sort((a,b)=>a.ts-b.ts);
+ $("todayCard").innerHTML=`<div class="day" style="margin-top:0">${t("today")}</div>`+(arr.length?arr.map(entryHTML).join(""):`<div class="hint">${t("none")}</div>`);
+ bindEntries($("todayCard"));
+}
+function bindEntries(root){root.querySelectorAll(".entry").forEach(el=>el.onclick=()=>openEditor(el.dataset.id))}
+
+function renderHist(){
+ const sorted=[...data].sort((a,b)=>b.ts-a.ts);
+ const cutoff=Date.now()-14*864e5;
+ const recent=data.filter(e=>e.ts>=cutoff);
+ if(recent.length){
+  const vals=recent.map(e=>e.mg);
+  const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+  $("stats").innerHTML=`<div><b>${toDisp(avg)}</b><small>${t("avg")}</small></div><div><b>${toDisp(Math.min(...vals))}</b><small>${t("min")}</small></div><div><b>${toDisp(Math.max(...vals))}</b><small>${t("max")}</small></div>`;
+ } else $("stats").innerHTML=`<div class="hint" style="grid-column:1/-1">${t("none")}</div>`;
+ drawChart();
+ let html="",last="";
+ for(const e of sorted){
+  const d=new Date(e.ts),k=dayKey(d);
+  if(k!==last){last=k;html+=`<div class="day">${d.toLocaleDateString(loc(),{weekday:"long",day:"numeric",month:"long"})}</div>`}
+  html+=entryHTML(e);
+ }
+ $("list").innerHTML=html||`<div class="hint">${t("none")}</div>`;
+ bindEntries($("list"));
+}
+
+function drawChart(){
+ const W=340,H=190,L=34,R=8,Tp=10,B=26,days=[];
+ const now=new Date();now.setHours(0,0,0,0);
+ for(let i=13;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);days.push(dayKey(d))}
+ const pts=data.filter(e=>days.includes(dayKey(new Date(e.ts))));
+ const all=pts.map(e=>e.mg).concat([cfg.lo,cfg.hi]);
+ const mn=Math.max(0,Math.min(...all)-15),mx=Math.max(...all)+15;
+ const x=i=>L+(W-L-R)*(i/13),y=v=>Tp+(H-Tp-B)*(1-(v-mn)/(mx-mn));
+ const cols=["#e0a21a","#2f8fd8","#8a5cc7"];
+ let s=`<rect x="${L}" y="${y(cfg.hi)}" width="${W-L-R}" height="${y(cfg.lo)-y(cfg.hi)}" fill="${"#1a9a5b"}" opacity=".12"/>`;
+ for(let i=0;i<4;i++){const v=mn+(mx-mn)*i/3;s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="currentColor" opacity=".1"/><text x="${L-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="currentColor" opacity=".6">${toDisp(v)}</text>`}
+ [0,3,6,9,13].forEach(i=>{const [,m,d]=days[i].split("-");s+=`<text x="${x(i)}" y="${H-8}" font-size="10" text-anchor="middle" fill="currentColor" opacity=".6">${+d}.${+m}.</text>`});
+ for(let sl=0;sl<3;sl++){
+  const line=days.map((k,i)=>{const e=pts.filter(p=>p.slot===sl&&dayKey(new Date(p.ts))===k).sort((a,b)=>b.ts-a.ts)[0];return e?[x(i),y(e.mg)]:null}).filter(Boolean);
+  if(line.length>1)s+=`<polyline points="${line.map(p=>p.join(",")).join(" ")}" fill="none" stroke="${cols[sl]}" stroke-width="2"/>`;
+  line.forEach(p=>s+=`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${cols[sl]}"/>`);
+ }
+ $("chart").innerHTML=s;
+ $("legend").innerHTML=[0,1,2].map(i=>`<span style="color:${cols[i]}">●</span> ${t("s"+i)}`).join(" &nbsp; ")+` &nbsp; <span style="color:#1a9a5b">▮</span> ${toDisp(cfg.lo)}–${toDisp(cfg.hi)} ${unitName()}`;
+}
+
+function saveEntry(){
+ const raw=parseFloat(String($("v").value).replace(",","."));
+ if(!raw||raw<=0){toast(t("enter"));$("v").focus();return}
+ const mg=fromDisp(raw);
+ if(mg<20||mg>700){if(!confirm(t("odd")))return}
+ const ts=$("when").value?new Date($("when").value).getTime():Date.now();
+ data.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),ts,slot,mg:Math.round(mg*10)/10,note:$("note").value.trim()});
+ save("glu.data",data);
+ $("v").value="";$("note").value="";resetWhen();
+ const n=guessSlot(); const today=dayKey(new Date()); const got=new Set(data.filter(e=>dayKey(new Date(e.ts))===today).map(e=>e.slot));
+ slot=[slot,0,1,2].find(i=>!got.has(i))??n; // jump to next missing slot
+ if(navigator.vibrate)navigator.vibrate(15);
+ toast(t("saved"));renderSlots();renderToday();
+}
+function resetWhen(){$("when").value=localInput(new Date())}
+
+let editId=null;
+function openEditor(id){
+ const e=data.find(x=>x.id===id);if(!e)return;editId=id;
+ $("eV").value=toDisp(e.mg);$("eSlot").value=e.slot;$("eWhen").value=localInput(new Date(e.ts));$("eNote").value=e.note||"";
+ $("editor").showModal();
+}
+$("eSave").onclick=()=>{
+ const e=data.find(x=>x.id===editId);const raw=parseFloat(String($("eV").value).replace(",","."));
+ if(!e||!raw){toast(t("enter"));return}
+ e.mg=Math.round(fromDisp(raw)*10)/10;e.slot=+$("eSlot").value;e.ts=new Date($("eWhen").value).getTime();e.note=$("eNote").value.trim();
+ save("glu.data",data);$("editor").close();refresh();
+};
+$("eDel").onclick=()=>{if(confirm(t("confirmDel"))){data=data.filter(x=>x.id!==editId);save("glu.data",data);$("editor").close();refresh()}};
+$("eCancel").onclick=()=>$("editor").close();
+
+function reportText(){
+ const sorted=[...data].sort((a,b)=>a.ts-b.ts);
+ let out=`${t("report")} (${unitName()})\n`,last="";
+ for(const e of sorted){const d=new Date(e.ts),k=dayKey(d);
+  if(k!==last){last=k;out+=`\n${d.toLocaleDateString(loc(),{weekday:"short",day:"2-digit",month:"2-digit",year:"numeric"})}\n`}
+  out+=`  ${t("s"+e.slot)}: ${toDisp(e.mg)}${e.note?" ("+e.note+")":""}\n`}
+ return out;
+}
+$("shareBtn").onclick=async()=>{const txt=reportText();try{if(navigator.share)await navigator.share({title:t("report"),text:txt});else{await navigator.clipboard.writeText(txt);toast("Copied")}}catch(e){}};
+$("csvBtn").onclick=()=>{
+ const rows=[["date","time","slot","mg_dl","mmol_l","note"]];
+ [...data].sort((a,b)=>a.ts-b.ts).forEach(e=>{const d=new Date(e.ts);rows.push([dayKey(d),`${pad(d.getHours())}:${pad(d.getMinutes())}`,T.en["s"+e.slot],Math.round(e.mg),(e.mg/18.016).toFixed(1),'"'+(e.note||"").replace(/"/g,'""')+'"'])});
+ const blob=new Blob(["﻿"+rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="glucose-log.csv";document.body.appendChild(a);a.click();a.remove();
+};
+
+function tab(name){curTab=name;$("viewAdd").classList.toggle("hidden",name!=="add");$("viewHist").classList.toggle("hidden",name!=="hist");
+ $("tabAdd").classList.toggle("on",name==="add");$("tabHist").classList.toggle("on",name==="hist");if(name==="hist")renderHist()}
+$("tabAdd").onclick=()=>tab("add");$("tabHist").onclick=()=>tab("hist");
+$("saveBtn").onclick=saveEntry;
+$("v").addEventListener("keydown",e=>{if(e.key==="Enter")saveEntry()});
+$("settingsBtn").onclick=()=>$("settings").showModal();
+$("closeSet").onclick=()=>{
+ cfg.lang=$("sLang").value;
+ const newUnit=$("sUnit").value;
+ if(newUnit!==cfg.unit){cfg.unit=newUnit}else{
+  const lo=parseFloat($("sLo").value),hi=parseFloat($("sHi").value);
+  if(lo>0&&hi>lo){cfg.lo=fromDisp(lo);cfg.hi=fromDisp(hi)}}
+ save("glu.cfg",cfg);$("settings").close();renderStatic();refresh();
+};
+function refresh(){renderSlots();renderToday();if(curTab==="hist")renderHist();$("unitLbl").textContent=unitName()}
+
+slot=guessSlot();renderStatic();resetWhen();refresh();tab("add");
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){slot=guessSlot();resetWhen();refresh()}});
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
